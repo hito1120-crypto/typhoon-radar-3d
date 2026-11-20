@@ -13,7 +13,7 @@ html,body{margin:0;height:100%;background:#04060c;overflow:hidden;font-family:"Y
 button{background:#12233c;color:#dfe9f5;border:1px solid #2c4a70;border-radius:8px;padding:8px 14px;font-size:14px;cursor:pointer;touch-action:manipulation}
 button.on{background:#e8b84a;color:#04060c;border-color:#e8b84a}
 input[type=range]{accent-color:#e8b84a;height:28px}#sl{flex:1;min-width:140px}
-#tm{font-size:15px;min-width:118px;font-variant-numeric:tabular-nums}
+#tm{font-size:15px;min-width:104px;font-variant-numeric:tabular-nums}
 #pn{display:none;gap:14px;flex-wrap:wrap;font-size:12px;color:#8fb2d6;align-items:center}#pn.show{display:flex}
 #note{font-size:11px;color:#7f9bb8;line-height:1.5;max-height:0;overflow:hidden;transition:max-height .25s}#note.show{max-height:200px}
 #nl{font-size:11px;color:rgba(143,178,214,.6);letter-spacing:.04em}
@@ -28,25 +28,27 @@ input[type=range]{accent-color:#e8b84a;height:28px}#sl{flex:1;min-width:140px}
  <div id=note>高さは降水の強さを表現したもので、雲の実際の高さではありません。降水強度(mm/h)から換算したdBZ相当(推定値)で、青→水色→白→金の順に強くなります。台風の目の位置(カメラの追従先)は推定です。「150+」は、コード表の上限(201mm/h)に達する格子を含む強雨域です。軽量化のため、格子は2kmに間引き、点数を最大30万点に制限しています。<br>データ: 気象庁 全国合成レーダーGPV(京都大学生存圏研究所アーカイブ)/ 標高: 国土地理院標高タイル(日本側)/ 海岸線: Natural Earth</div>
  <div id=pn><label>高さ <input id=hs type=range min=.4 max=2.5 step=.05 value=1> <span id=hv>×1.0</span></label><label>明るさ <input id=gn type=range min=.5 max=2 step=.05 value=1></label></div>
  <div id=nl>高さは降水の強さを表現したもので、雲の実際の高さではありません</div>
- <div class=row><button id=pl>▶ 再生</button><span id=tm>9/6 00:00 JST</span><input id=sl type=range min=0 max=1 step=.001 value=0>
+ <div class=row><button id=pl>▶ 再生</button><span id=tm>9/6 00:00 JST</span><span id=pg style="font-size:11px;color:#e8b84a;min-width:70px"></span><input id=sl type=range min=0 max=1 step=.001 value=0>
   <button id=fl class=on>目を追従</button><button id=bp>高さ・明るさ</button><button id=bn>注記</button></div>
 </div>
 <div id=ld>読み込み中…</div>
 <script type="importmap">{"imports":{"three":"./lib/three.module.min.js"}}</script>
 <script type="module">
 import * as THREE from "three";
-import {makeRain,loadGrid,loadHaze,fillRain,addTerrain,setScale,lonlat2xz} from "./core.js";
-const $=id=>document.getElementById(id), MAXPT=300000;
+import {makeRain,loadGrid,loadHaze,fillRain,addTerrain,setScale,lonlat2xz,cfg,gridCache} from "./core.js";
+const $=id=>document.getElementById(id), QP=new URLSearchParams(location.search), MOB=QP.has("m")?QP.get("m")==="1":(innerWidth<800||matchMedia("(pointer:coarse)").matches), MAXPT=MOB?80000:300000, DIR=MOB?"grids_m":"grids", FPH=MOB?3:6;
+cfg.dir=DIR; cfg.q8=MOB; cfg.limit=MOB?1e9:40;
 const FAIL=()=>{const l=document.getElementById('ld')||document.body.appendChild(Object.assign(document.createElement('div'),{id:'ld'}));l.textContent='読み込めませんでした。通信を確認して再読み込みしてください';l.style.cssText='position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#04060c;color:#e8b84a;z-index:9;text-align:center;padding:20px'};
-let idx,ST,EYE;try{const J=async u=>{const r=await fetch(u);if(!r.ok)throw new Error(u);return r.json()};[idx,ST,EYE]=await Promise.all([J('grids/index.json'),J('grids/stats.json'),J('frames/eye.json')])}catch(e){FAIL();throw e}
-const TAGS=idx.tags, NF=TAGS.length, H0=0, H1=(NF-1)/6;           // hours since 9/6 00:00 JST
-const cv=$("c"), R=new THREE.WebGLRenderer({canvas:cv,antialias:false}); let DPR=Math.min(window.devicePixelRatio||1,2);
+let idx,ST,EYE;try{const J=async u=>{const r=await fetch(u);if(!r.ok)throw new Error(u);return r.json()};[idx,ST,EYE]=await Promise.all([J(DIR+'/index.json'),J(DIR+'/stats.json'),J('frames/eye.json')])}catch(e){FAIL();throw e}
+const TAGS=idx.tags, NF=TAGS.length, H0=0, H1=(NF-1)/FPH;           // hours since 9/6 00:00 JST
+const cv=$("c"), R=new THREE.WebGLRenderer({canvas:cv,antialias:false}); let DPR=MOB?1:Math.min(window.devicePixelRatio||1,2);
 const S=new THREE.Scene(); S.background=new THREE.Color(0x04060c); const cam=new THREE.PerspectiveCamera(30,1,5,12000);
-let ter;try{ter=await addTerrain(S,10,"terrain_h",true)}catch(e){FAIL();throw e}
+let ter;try{ter=await addTerrain(S,10,MOB?"terrain_m":"terrain_h",true)}catch(e){FAIL();throw e}
 const rain=makeRain(MAXPT+20000); S.add(rain.pts);
-rain.gamma=.85; rain.knee=.55; rain.slope=.5; rain.shade=4.5; rain.mid=.35; rain.edge=.75; rain.noise=.6; rain.hazeGain=6; rain.hazeN=3;
+rain.gamma=.85; rain.knee=.55; rain.slope=.5; rain.shade=4.5; rain.mid=.35; rain.edge=.75; rain.noise=.6; rain.hazeGain=6; rain.hazeN=MOB?2:3; rain.qmax=MOB?255:65535;
+const HZ=MOB?{rows:idx.hrows,cols:idx.hcols,ds:idx.hds}:{rows:Math.floor(idx.rows/4),cols:Math.floor(idx.cols/4),ds:4};
 rain.mat.uniforms.uS.value.set(36,48,52); ter.lineMat.uniforms.uOp.value=.8;
-let HM=1, GN=1, thin=.4, W=0, Hh=0;
+let HM=1, GN=1, thin=MOB?.6:.4, W=0, Hh=0;
 const state={az:0,el:52,D:2000,h:0,follow:true,playing:false,tx:131,tz:0,eyeAt:null};
 const eyeAt=h=>{const f=Math.min(Math.max(h*6,0),EYE.length-1.001),i=Math.floor(f),w=f-i;return [EYE[i][0]*(1-w)+EYE[i+1][0]*w,EYE[i][1]*(1-w)+EYE[i+1][1]*w]};
 const PL=[['奄美大島',129.5,28.3],['鹿児島',130.56,31.6],['福岡',130.4,33.6],['釜山',129.07,35.18],['済州島',126.55,33.4]];
@@ -54,21 +56,37 @@ const lb=PL.map(p=>{const t=document.createElement("div");t.className="lb";t.tex
 function resize(){W=innerWidth;Hh=innerHeight;R.setPixelRatio(DPR);R.setSize(W,Hh,false);cam.aspect=W/Hh;cam.updateProjectionMatrix();rain.mat.uniforms.uRes.value.set(W*DPR,Hh*DPR);rain.mat.uniforms.uDpr.value=DPR;draw()}
 const ss=(a,b,x)=>{const u=Math.min(1,Math.max(0,(x-a)/(b-a)));return u*u*(3-2*u)};
 function place(){const D=state.D;cam.updateMatrixWorld();PL.forEach((p,i)=>{const [x,z]=lonlat2xz(p[1],p[2]);const v=new THREE.Vector3(x,0,z).project(cam),px=(v.x*.5+.5)*W,py=(1-(v.y*.5+.5))*Hh,vis=D>1100&&v.z<1&&px>0&&px<W&&py>0&&py<Hh;lb[i].style.display=vis?"block":"none";lb[i].style.left=px+8+"px";lb[i].style.top=py-8+"px"})}
-let busy=false,dirty=true,lastF=-1,lastKey="";
+let busy=false,dirty=true,waiting=false,prog="";
+const have=i=>gridCache.has(i)&&gridCache.has("hz"+i);
+const showPg=()=>{$("pg").textContent=waiting?"読み込み中…":prog};
+const FCm=new Map(); let curKey="",curN=0,curThin=thin;
+function fillCached(i,w,HS,nr,A,B,HA,HB){
+ const Q=MOB?4:20, wq=Math.round(w*Q)/Q, key=`${i}|${wq}|${HM}|${Math.round(nr*4)}`;
+ if(key===curKey)return;                                      // same frame+settings: keep the assembled points
+ const hit=FCm.get(key);
+ if(hit){rain.pos.set(hit.pos);rain.val.set(hit.val);rain.lit.set(hit.lit);rain.g.setDrawRange(0,hit.n);for(const k of["position","aV","aL"])rain.g.attributes[k].needsUpdate=true;curN=hit.n;curThin=hit.thin}
+ else{
+  const fill=()=>fillRain(rain,A,B,wq,idx,HS,1,.03,{A:HA,B:HB,rows:HZ.rows,cols:HZ.cols,ds:HZ.ds});
+  rain.thin=thin; let n=fill();
+  if(n>MAXPT*.97||n>=rain.max-100){thin=Math.max(.03,thin*MAXPT*.88/Math.max(n,1));rain.thin=thin;n=fill()}
+  else if(n<MAXPT*.5&&thin<1)thin=Math.min(1,thin*1.1);
+  curN=n;curThin=rain.thin; FCm.set(key,{n,thin:curThin,pos:rain.pos.slice(0,n*3),val:rain.val.slice(0,n),lit:rain.lit.slice(0,n)});
+  if(FCm.size>24)FCm.delete(FCm.keys().next().value);
+ }
+ curKey=key;
+}
 async function draw(){dirty=true;if(busy)return;busy=true;
- while(dirty){dirty=false;const h=state.h,f=Math.min(Math.max(h*6,0),NF-1.001),i=Math.floor(f),w=f-i,D=state.D;
-  let A,B,HA,HB;try{[A,B,HA,HB]=await Promise.all([loadGrid(i,TAGS),loadGrid(i+1,TAGS),loadHaze(i,TAGS),loadHaze(i+1,TAGS)])}catch(e){FAIL();busy=false;state.playing=false;return}
-  if(state.playing)for(let k=2;k<=6&&i+k<NF;k++){loadGrid(i+k,TAGS).catch(()=>{});loadHaze(i+k,TAGS).catch(()=>{})}
+ while(dirty){dirty=false;const h=state.h,f=Math.min(Math.max(h*FPH,0),NF-1.001),i=Math.floor(f),w=f-i,D=state.D;
+  let A,B,HA,HB;if(!(have(i)&&have(i+1))){waiting=true;showPg()}
+  try{[A,B,HA,HB]=await Promise.all([loadGrid(i,TAGS),loadGrid(i+1,TAGS),loadHaze(i,TAGS),loadHaze(i+1,TAGS)])}catch(e){FAIL();busy=false;state.playing=false;return}
+  if(waiting){waiting=false;showPg()}
+  if(state.playing&&!MOB)for(let k=2;k<=6&&i+k<NF;k++){loadGrid(i+k,TAGS).catch(()=>{});loadHaze(i+k,TAGS).catch(()=>{})}
   const [elon,elat]=eyeAt(h); if(state.follow){state.tx=(elon-137)*89.5;state.tz=-(elat-36.5)*111.19}
   const HS=160*HM; rain.mat.uniforms.uHmax.value=Math.pow(.55+.45*.5,.85)*HS; rain.mat.uniforms.uGain.value=.28*2.4*GN;
   const nr=1-Math.min(1,Math.max(0,(D-900)/900));
-  const key=h.toFixed(4)+"|"+HM+"|"+thin.toFixed(3);
-  rain.thin=thin; rain.hazeDens=1-.4*nr; rain.hazeGain=6*(1-.7*nr);
-  let n=fillRain(rain,A,B,w,idx,HS,1,.03,{A:HA,B:HB,rows:Math.floor(idx.rows/4),cols:Math.floor(idx.cols/4),ds:4});
-  // keep <= MAXPT: adapt thinning (one corrective refill when over budget)
-  if(n>MAXPT*.97||n>=rain.max-100){thin*=MAXPT*.88/Math.max(n,1);thin=Math.max(.03,thin);rain.thin=thin;n=fillRain(rain,A,B,w,idx,HS,1,.03,{A:HA,B:HB,rows:Math.floor(idx.rows/4),cols:Math.floor(idx.cols/4),ds:4})}
-  else if(n<MAXPT*.6&&thin<1)thin=Math.min(1,thin*1.12);
-  const k=Math.pow(2200/D,.9)*1.45*Math.pow(.4/thin,.35); rain.mat.uniforms.uSize.value=Math.min(k,5)*1.3*1.6; ter.mat.uniforms.uSz.value=1.7*Math.pow(1.3,.9)*Math.min(Math.pow(2200/D,.9),2.5);
+  rain.hazeDens=1-.4*nr; rain.hazeGain=6*(1-.7*nr);
+  fillCached(i,w,HS,nr,A,B,HA,HB); const n=curN;
+  const k=Math.pow(2200/D,.9)*1.45*Math.pow((MOB?.6:.4)/curThin,.35)*(MOB?1.15:1); rain.mat.uniforms.uSize.value=Math.min(k,5)*1.3*1.6; ter.mat.uniforms.uSz.value=1.7*Math.pow(1.3,.9)*Math.min(Math.pow(2200/D,.9),2.5)*(MOB?1.4:1);
   rain.mat.uniforms.uMaxPx.value=(30-16*nr)*DPR; rain.mat.uniforms.uTone.value=1.2*nr; rain.mat.uniforms.uMinPx.value=(1.2+.6*nr)*DPR;
   rain.mat.uniforms.uFogN.value=Math.max(D*1.5,250); rain.mat.uniforms.uFogF.value=Math.max(D*3.5,700); rain.mat.uniforms.uFogS.value=.7*(1-ss(1000,1800,D));
   ter.lineMat.uniforms.uFadeN.value=Math.max(250,D*1.6); ter.lineMat.uniforms.uFadeF.value=Math.max(250,D*1.6)+150;
@@ -92,7 +110,12 @@ $("pl").onclick=()=>{state.playing=!state.playing;$("pl").textContent=state.play
 $("fl").onclick=()=>{state.follow=!state.follow;$("fl").classList.toggle("on",state.follow);draw()};
 $("bp").onclick=()=>{$("pn").classList.toggle("show")};$("bn").onclick=()=>{$("note").classList.toggle("show")};
 $("hs").oninput=e=>{HM=+e.target.value;$("hv").textContent="×"+HM.toFixed(1);draw()};$("gn").oninput=e=>{GN=+e.target.value;draw()};
-let last=performance.now();(function loop(t){const dt=(t-last)/1000;last=t;if(state.playing&&!busy){state.h+=dt*1.2;if(state.h>=H1)state.h=H0;draw()}requestAnimationFrame(loop)})(last);
-addEventListener("resize",resize);try{await Promise.all([0,1,2,3,4].flatMap(k=>[loadGrid(k,TAGS),loadHaze(k,TAGS)]))}catch(e){FAIL();throw e}
-resize();$("ld").remove();window.lastN=0;window.getS=()=>[state.D,state.az,state.el];window.ready=true;window.setState=(o)=>{Object.assign(state,o);return draw().then(()=>{})};
+let last=performance.now();(function loop(t){const dt=(t-last)/1000;last=t;
+ if(state.playing&&!busy){let nh=state.h+dt*1.2;if(nh>=H1)nh=H0;const f=Math.min(Math.max(nh*FPH,0),NF-1.001),i=Math.floor(f);
+  if(have(i)&&have(i+1)){state.h=nh;if(waiting){waiting=false;showPg()}draw()}
+  else{if(!waiting){waiting=true;showPg()}for(let k=0;k<4&&i+k<NF;k++){loadGrid(i+k,TAGS).catch(()=>{});loadHaze(i+k,TAGS).catch(()=>{})}}}
+ requestAnimationFrame(loop)})(last);
+addEventListener("resize",resize);try{await Promise.all([0,1].flatMap(k=>[loadGrid(k,TAGS),loadHaze(k,TAGS)]))}catch(e){FAIL();throw e}
+resize();$("ld").remove();
+(async()=>{const q=[...Array(MOB?NF:12).keys()].slice(2),tot=q.length+2;let done=2;const wk=async()=>{while(q.length){const k=q.shift();try{await Promise.all([loadGrid(k,TAGS),loadHaze(k,TAGS)])}catch(e){}done++;if(MOB){prog=done<tot?`読み込み ${Math.round(done/tot*100)}%`:"";showPg()}}};await Promise.all([wk(),wk(),wk()])})();window.lastN=0;window.getS=()=>[state.D,state.az,state.el];window.ready=true;window.setState=(o)=>{Object.assign(state,o);return draw().then(()=>{})};
 </script></body></html>

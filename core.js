@@ -25,20 +25,20 @@ export function makeRain(maxPts) {
   const pts = new THREE.Points(g, mat); pts.frustumCulled = false; g.setDrawRange(0, 0);
   return { pts, pos, val, lit, g, mat, max: maxPts };
 }
-export const gridCache = new Map();
+export const gridCache = new Map(); export const cfg = { dir: "grids", q8: false, limit: 40 };
 export async function loadGrid(i, tags) {
   if (gridCache.has(i)) return gridCache.get(i);
-  const r = await fetch(`grids/${tags[i]}.u16.gz`);
+  const r = await fetch(`${cfg.dir}/${tags[i]}.${cfg.q8 ? "q8" : "u16"}.gz`); if (!r.ok) throw new Error("grid");
   const ab = await new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
-  const a = new Uint16Array(ab); gridCache.set(i, a);
-  if (gridCache.size > 40) gridCache.delete(gridCache.keys().next().value);
+  const a = cfg.q8 ? new Uint8Array(ab) : new Uint16Array(ab); gridCache.set(i, a);
+  if (gridCache.size > cfg.limit) gridCache.delete(gridCache.keys().next().value);
   return a;
 }
 export async function loadHaze(i, tags) {
   const k = "hz" + i; if (gridCache.has(k)) return gridCache.get(k);
-  const r = await fetch(`grids/${tags[i]}.hz.gz`);
+  const r = await fetch(`${cfg.dir}/${tags[i]}.hz.gz`); if (!r.ok) throw new Error("hz");
   const a = new Uint8Array(await new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer()); gridCache.set(k, a);
-  if (gridCache.size > 40) gridCache.delete(gridCache.keys().next().value);
+  if (gridCache.size > cfg.limit) gridCache.delete(gridCache.keys().next().value);
   return a;
 }
 const hh2 = (x, y) => { let h = Math.imul(x * 374761393 + y * 668265263, 1274126177); h ^= h >>> 13; h = Math.imul(h, 1103515245); return ((h ^ (h >>> 16)) & 65535) / 65536; };
@@ -48,7 +48,7 @@ const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
 export function fillRain(rain, A, B, w, idx, HS, keep = 1, HT = 0.03, haze = null) {
   const { rows, cols, lon0, lat0, dx, dy } = idx, pos = rain.pos, val = rain.val, lit = rain.lit, max = rain.max;
   const kn = rain.knee ?? 1, sl = rain.slope ?? 1, cmp = z => z < kn ? z : kn + (z - kn) * sl, LS = rain.shade ?? 4.5;
-  const F = new Float32Array(rows * cols), s = 1 / 65535;
+  const F = new Float32Array(rows * cols), s = 1 / (rain.qmax || 65535);
   for (let k = 0; k < F.length; k++) F[k] = ((1 - w) * A[k] + w * B[k]) * s;
   // distance (in cells, chamfer) from the outer edge of the rain mask, clipped at 12
   const DD = new Uint8Array(rows * cols), HTm = HT;
